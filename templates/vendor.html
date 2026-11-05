@@ -21,7 +21,7 @@
       </select>
       <button class="btn">Set status</button>
     </form>
-    {% if v.status != 'approved' %}
+    {% if v.status in ('submitted', 'verified') %}
     <form method="post" action="/vendors/{{ v.id }}/status" class="inline"
           {% if summary.fail or summary.missing %}data-confirm="Some checks failed or items are missing. Approve anyway?"{% endif %}>
       <input type="hidden" name="status" value="approved">
