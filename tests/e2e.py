@@ -51,7 +51,7 @@ async def main():
             check("never" in (info.instructions or "").lower(), "server instructions present")
             tools = {t.name for t in (await s.list_tools()).tools}
             check(tools == {"get_summary", "create_vendor_request", "list_vendors", "get_vendor", "update_vendor",
-                            "add_review_note"}, "six tools listed")
+                            "add_review_note", "list_invoices", "update_invoice"}, "eight tools listed")
             err, summ = await call(s, "get_summary")
             check(not err and summ["connected"], "get_summary works")
             err, v = await call(s, "create_vendor_request", vendor_name="Sharma Packaging (test)",
@@ -144,6 +144,63 @@ async def main():
         check(f.status_code == 200 and f.content.startswith(b"%PDF"), "uploaded file downloads")
         anon = await httpx.AsyncClient(base_url=BASE).get(f"/vendors/{vid}")
         check(anon.status_code == 303, "detail page needs login")
+    print("Invoices (monthly loop)")
+    pdf = ("inv.pdf", b"%PDF-1.4 invoice", "application/pdf")
+    async with httpx.AsyncClient(base_url=BASE) as pub:
+        page = (await pub.get(f"/v/{token}")).text
+        check("Send an invoice" in page, "approved vendor's link shows invoice form")
+        r = await pub.post(f"/v/{token}/invoices", data={"invoice_number": "INV-1", "invoice_date": "2026-11-01",
+                           "taxable_amount": "12,500", "gst_amount": "2250"}, files={"file": pdf})
+        check(r.status_code == 303 and "inv=sent" in r.headers["location"], "vendor sends invoice with PDF")
+        r = await pub.post(f"/v/{token}/invoices", data={"invoice_number": "inv 1", "invoice_date": "2026-11-02",
+                           "taxable_amount": "48000", "gst_amount": "7000"})
+        check("inv=sent" in r.headers["location"], "second invoice (same number, odd GST) accepted for review")
+        r = await pub.post(f"/v/{token}/invoices", data={"invoice_number": "INV-9", "invoice_date": "2026-11-02",
+                           "taxable_amount": "abc"})
+        check("inv_error" in r.headers["location"], "bad amount rejected with a message")
+        r = await pub.post(f"/v/{token}/invoices", data={"invoice_number": "INV-9", "invoice_date": "2026-11-02",
+                           "taxable_amount": "100"}, files={"file": ("x.exe", b"MZ", "application/octet-stream")})
+        check("inv_error" in r.headers["location"], "bad invoice file type rejected")
+
+    async with streamablehttp_client(f"{BASE}/mcp/{TOKEN}") as (r, w, _):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            err, summ = await call(s, "get_summary")
+            check(summ["invoices"]["to_review"] == 2, "get_summary counts invoices to review")
+            err, li = await call(s, "list_invoices", status="submitted")
+            by_no = {i["invoice_number"]: i for i in li["invoices"]}
+            first, second = by_no["INV-1"], by_no["inv 1"]
+            st1 = {c["key"]: c["status"] for c in first["check_results"]}
+            st2 = {c["key"]: c["status"] for c in second["check_results"]}
+            check(first["total"] == 14750.0 and first["file"]["size_bytes"] > 0, "list_invoices returns totals and file")
+            check(st2["duplicate"] == "fail" and st2["gst_rate"] == "warn" and st2["file"] == "missing",
+                  "duplicate number, odd GST and missing file flagged")
+            check(st1["gst_rate"] == "pass" and st1["vendor"] == "pass", "18% GST and approved vendor pass")
+            check(second["vendor_earlier_invoice_totals"] == [14750.0], "earlier totals given for comparison")
+            err, d = await call(s, "update_invoice", invoice_id=second["invoice_id"], status="rejected",
+                                review_note="Duplicate of INV-1 and GST is 14.6%, not a standard rate.")
+            check(not err and d["status"] == "rejected", "Claude saves review and rejects on request")
+            err, msg = await call(s, "update_invoice", invoice_id=999999, status="paid")
+            check(err and "No invoice with id" in msg, "unknown invoice id gives a clear error")
+            inv1 = first["invoice_id"]
+
+    async with httpx.AsyncClient(base_url=BASE) as c:
+        await c.post("/login", data={"username": USER, "password": PASSWORD})
+        det = (await c.get(f"/vendors/{vid}")).text
+        check("Duplicate of INV-1" in det and "₹14,750.00" in det, "invoices and Claude's note show in the app")
+        await c.post(f"/vendors/{vid}/invoices/{inv1}/status", data={"status": "approved"})
+        pay = (await c.get("/api/payments.csv")).text
+        check("INV-1" in pay and "50100123456789" in pay and "14750.00" in pay and "inv 1" not in pay,
+              "payment file has approved invoice with bank details")
+        await c.post(f"/vendors/{vid}/invoices/{inv1}/status",
+                     data={"status": "paid", "paid_on": "2026-11-03", "payment_reference": "UTR123456"})
+        dash = (await c.get("/dashboard")).text
+        check("Paid this month" in dash, "dashboard shows invoice totals")
+        f = await c.get(f"/vendors/{vid}/invoices/{inv1}/file")
+        check(f.content.startswith(b"%PDF"), "invoice file downloads")
+    async with httpx.AsyncClient(base_url=BASE) as pub:
+        page = (await pub.get(f"/v/{token}")).text
+        check("Paid 2026-11-03" in page and "UTR123456" in page, "vendor sees paid date and reference")
     print(f"\nAll {ok} checks passed.")
 
 

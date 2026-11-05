@@ -3,8 +3,11 @@ import os
 import re
 from urllib.parse import quote
 
+from datetime import date
+
 from checks import ITEMS, normalize, run_checks, summarize
-from models import FIELD_NAMES, STATUSES, Event, Vendor, VendorFields, now
+from invoices import INVOICE_STATUS_LABELS, invoice_dict, parse_date
+from models import FIELD_NAMES, INVOICE_STATUSES, STATUSES, Event, Vendor, VendorFields, now
 
 STATUS_LABELS = {"requested": "Requested", "submitted": "Submitted", "needs_fixes": "Needs fixes",
                  "verified": "Verified", "approved": "Approved"}
@@ -122,6 +125,22 @@ def vendor_detail(vendor, base):
         "last_review": {"findings": vendor.review_findings, "follow_up_message": vendor.follow_up_message,
                         "reviewed_at": vendor.reviewed_at.isoformat(timespec="seconds") if vendor.reviewed_at else None},
         "submitted_at": vendor.submitted_at.isoformat(timespec="seconds") if vendor.submitted_at else None,
+        "invoices": [invoice_dict(i, vendor) for i in vendor.invoices[:20]],
         "history": [{"at": e.created_at.isoformat(timespec="seconds"), "by": e.actor, "action": e.action,
                      "detail": e.detail} for e in vendor.events[:30]],
     }
+
+
+def set_invoice_status(db, v, inv, status, actor, paid_on=None, reference=None):
+    if status not in INVOICE_STATUSES:
+        raise ValueError(f"Unknown invoice status '{status}'. Allowed: {INVOICE_STATUSES}")
+    if status == "paid":
+        inv.paid_on = parse_date(paid_on) if paid_on else date.today().isoformat()
+        inv.payment_reference = (reference or "").strip()[:100] or None
+    if status != inv.status or status == "paid":
+        detail = f"{inv.invoice_number}: {INVOICE_STATUS_LABELS[inv.status]} → {INVOICE_STATUS_LABELS[status]}"
+        if status == "paid" and inv.payment_reference:
+            detail += f" (ref {inv.payment_reference})"
+        log(db, v, actor, "invoice status", detail)
+        inv.status = status
+        inv.updated_at = v.updated_at = now()

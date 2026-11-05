@@ -7,6 +7,14 @@
 {% endblock %}
 {% block mainclass %}wrap narrow{% endblock %}
 {% block content %}
+{% if v.status == 'approved' %}
+<section class="intro">
+  <h1>{{ v.vendor_name }} · vendor portal for {{ owner.business_name }}</h1>
+  <p class="muted">Keep this link. Send your invoices here and see when they are paid.</p>
+</section>
+<div class="card done"><b>✓ You are an approved vendor of {{ owner.business_name }}.</b>
+  <span class="muted">Bank details on file: {{ f.bank_name or 'bank' }} account {{ mask(f.bank_account_number) }}. If your bank details change, ask {{ owner.business_name }} to reopen this form.</span></div>
+{% else %}
 <section class="intro">
   <h1>Hello{% if v.contact_name %} {{ v.contact_name }}{% endif %}, please share {{ v.vendor_name }}'s details</h1>
   <p class="muted">{{ owner.business_name }} needs these to add you as a vendor and pay you. Your progress saves
@@ -15,8 +23,10 @@
 
 <div id="locked" class="card done" {% if state.editable %}hidden{% endif %}>
   <h2>Thank you, your details are submitted</h2>
-  <p>{{ owner.business_name }} will review them. If anything needs fixing, they will contact you and this link will open for edits again.</p>
+  <p>{{ owner.business_name }} will review them. If anything needs fixing, they will contact you and this link will open for edits again.
+    Once you are approved, you can send invoices on this same link.</p>
 </div>
+{% endif %}
 
 {% if v.status == 'needs_fixes' %}
 <div class="card fixes"><b>{{ owner.business_name }} asked for some fixes.</b> Please correct the items marked below and submit again.</div>
@@ -81,7 +91,41 @@
     <p class="small muted">Checks here are automatic format checks. {{ owner.business_name }} reviews everything before approving.</p>
   </section>
 </div>
+{% if v.status == 'approved' %}
+<section class="card" id="invoices">
+  <h2>Send an invoice</h2>
+  {% if inv_sent %}<p class="flash">Invoice sent. {{ owner.business_name }} will review it.</p>{% endif %}
+  {% if inv_error %}<p class="alert">{{ inv_error }}</p>{% endif %}
+  <form method="post" action="/v/{{ v.public_token }}/invoices" enctype="multipart/form-data" class="fieldgrid" id="invform">
+    <label>Invoice number <input name="invoice_number" required maxlength="60" placeholder="INV-1043"></label>
+    <label>Invoice date <input name="invoice_date" type="date" required max="{{ today }}" value="{{ today }}"></label>
+    <label>Taxable amount (₹) <input name="taxable_amount" required inputmode="decimal" placeholder="12,500.00"></label>
+    <label>GST amount (₹) <input name="gst_amount" inputmode="decimal" placeholder="2,250.00" value="0"></label>
+    <label class="wide">Invoice PDF or photo <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label>
+    <div class="wide formfoot"><button class="btn primary">Send invoice</button>
+      <span class="small muted" id="invtotal"></span></div>
+  </form>
+  {% if owner.username == 'demo' %}
+  <p class="small muted">Demo: <button type="button" class="linkbtn" data-invsample="ok">fill a sample invoice</button> ·
+    <button type="button" class="linkbtn" data-invsample="odd">fill one with an odd GST amount</button></p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Your invoices</h2>
+  {% if v.invoices %}
+  <table class="files invtable">
+    <tr class="small muted"><td>Invoice</td><td>Date</td><td>Total</td><td>Status</td></tr>
+    {% for inv in v.invoices %}
+    <tr><td><b>{{ inv.invoice_number }}</b></td><td>{{ inv.invoice_date }}</td><td>{{ inv.total_paise|inr }}</td>
+      <td><span class="istatus is-{{ inv.status }}">{{ INVOICE_STATUS_LABELS[inv.status] }}</span>
+        {% if inv.status == 'paid' %}<div class="small muted">Paid {{ inv.paid_on }}{% if inv.payment_reference %} · Ref {{ inv.payment_reference }}{% endif %}</div>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No invoices yet.</p>{% endif %}
+</section>
+{% endif %}
 <script type="application/json" id="initial">{{ state|tojson }}</script>
 <script type="application/json" id="itemlabels">{{ ITEMS|tojson }}</script>
 {% endblock %}
-{% block scripts %}<script src="/static/vendor_form.js?v=2"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor_form.js?v=3"></script>{% endblock %}

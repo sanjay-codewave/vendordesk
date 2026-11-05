@@ -44,6 +44,57 @@
 
 <div class="detail">
   <div class="maincol">
+    {% if v.status == 'approved' or v.invoices %}
+    <section class="card" id="invoices">
+      <div class="cardhead"><h2>Invoices</h2>
+        <span class="small muted">Sent by the vendor on their link · <a href="/api/payments.csv">Payment file (CSV)</a></span></div>
+      {% if not v.invoices %}
+      <p class="muted">No invoices yet. {{ v.vendor_name }} can send invoices on their link now that they are approved.</p>
+      {% endif %}
+      {% for inv in v.invoices %}
+      {% set ic = invoice_checks(inv, v) %}{% set isum = summarize(ic) %}
+      <div class="invoice" id="inv-{{ inv.id }}">
+        <div class="invhead">
+          <div><b>{{ inv.invoice_number }}</b> <span class="muted small">· {{ inv.invoice_date }}</span>
+            <div class="small muted">Taxable {{ inv.taxable_paise|inr }} + GST {{ inv.gst_paise|inr }}</div></div>
+          <div class="invamt">{{ inv.total_paise|inr }}<br><span class="istatus is-{{ inv.status }}">{{ INVOICE_STATUS_LABELS[inv.status] }}</span></div>
+        </div>
+        <ul class="checks compact">
+          {% for c in ic if c.status != 'pass' %}
+          <li class="check {{ c.status }}"><span class="ci"></span><span><b>{{ c.label }}</b> <span class="muted">{{ c.reason }}</span></span><span class="tag {{ c.status }}">{{ c.status }}</span></li>
+          {% endfor %}
+          {% if not (isum.fail or isum.warn or isum.missing) %}<li class="check pass"><span class="ci"></span><span>All {{ isum.pass }} invoice checks passed</span><span class="tag pass">pass</span></li>{% endif %}
+        </ul>
+        {% if inv.filename %}<p class="small"><a href="/vendors/{{ v.id }}/invoices/{{ inv.id }}/file" target="_blank" rel="noopener">{{ inv.filename }}</a></p>{% endif %}
+        {% if inv.status == 'paid' %}<p class="small">Paid on <b>{{ inv.paid_on }}</b>{% if inv.payment_reference %} · Ref {{ inv.payment_reference }}{% endif %}</p>{% endif %}
+        <form method="post" action="/vendors/{{ v.id }}/invoices/{{ inv.id }}/note" class="watch invnote">
+          <label class="small">Review note {% if inv.review_note %}<span class="muted">(Claude or you)</span>{% endif %}
+            <textarea name="review_note" rows="2" placeholder="Ask Claude: “Review new invoices from {{ v.vendor_name }}”">{{ inv.review_note or '' }}</textarea></label>
+          <button class="btn small-btn">Save note</button>
+        </form>
+        <div class="invactions">
+          {% if inv.status == 'submitted' %}
+          <form method="post" action="/vendors/{{ v.id }}/invoices/{{ inv.id }}/status" class="inline"
+                {% if isum.fail %}data-confirm="Some invoice checks failed. Approve for payment anyway?"{% endif %}>
+            <input type="hidden" name="status" value="approved"><button class="btn approve small-btn">Approve for payment</button></form>
+          <form method="post" action="/vendors/{{ v.id }}/invoices/{{ inv.id }}/status" class="inline">
+            <input type="hidden" name="status" value="rejected"><button class="btn small-btn">Reject</button></form>
+          {% elif inv.status == 'approved' %}
+          <form method="post" action="/vendors/{{ v.id }}/invoices/{{ inv.id }}/status" class="inline watch paidform">
+            <input type="hidden" name="status" value="paid">
+            <input type="date" name="paid_on" value="{{ today }}" max="{{ today }}" aria-label="Paid on">
+            <input name="payment_reference" placeholder="UTR / reference" maxlength="100" aria-label="Payment reference">
+            <button class="btn primary small-btn">Mark paid</button></form>
+          {% endif %}
+          {% if inv.status in ('approved', 'rejected') %}
+          <form method="post" action="/vendors/{{ v.id }}/invoices/{{ inv.id }}/status" class="inline">
+            <input type="hidden" name="status" value="submitted"><button class="linkbtn small">Back to review</button></form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
     <section class="card">
       <div class="cardhead">
         <h2>Checks</h2>

@@ -3,21 +3,27 @@ the app makes no model calls. Claude, running in the customer's own account, cal
 from sqlalchemy import func, select
 
 from checks import ITEMS
-from models import FIELD_NAMES, STATUSES, SessionLocal, User, Vendor, now
+from invoices import invoice_dict
+from models import FIELD_NAMES, INVOICE_STATUSES, STATUSES, Invoice, SessionLocal, User, Vendor, now
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from services import (base_url, days_since, log, save_fields, set_status, validate_items, vendor_detail,
-                      vendor_summary)
+from services import (base_url, days_since, log, save_fields, set_invoice_status, set_status, validate_items,
+                      vendor_detail, vendor_summary)
 
-INSTRUCTIONS = f"""VendorDesk keeps the customer's vendor onboarding records: a checklist and a public upload link
-per vendor, the vendor's submitted details and documents, rule-based checks (GSTIN checksum, PAN, IFSC, account
-number, state and name matching) and an audit history. The app has no AI: you do the thinking and writing.
+INSTRUCTIONS = f"""VendorDesk keeps the customer's vendor records: a checklist and a public link per vendor, the
+vendor's submitted details and documents, rule-based checks (GSTIN checksum, PAN, IFSC, account number, state and
+name matching) and an audit history. After onboarding is approved, the vendor uses the same link every month to send
+invoices and see payment status; invoices get rule checks too (duplicate number, vendor approved, standard GST rate,
+date, document attached). The app has no AI: you do the thinking and writing.
 - Write every message yourself (request and follow-up messages) and pass it to the tools.
 - VendorDesk never sends messages. Never say a message was sent; give the user the link and message to send.
 - If vendor details needed for a tool are missing (e.g. the vendor's name), ask the user. Do not guess or invent
   contact details, GSTIN, PAN or bank details.
 - Checklist keys for required_items: {", ".join(ITEMS)}.
-- Statuses: {", ".join(STATUSES)}. Approval is the user's decision: only set 'approved' when the user asks."""
+- Vendor statuses: {", ".join(STATUSES)}. Invoice statuses: {", ".join(INVOICE_STATUSES)}.
+- Approving a vendor, approving an invoice for payment and marking an invoice paid are the user's decisions: only do
+  them when the user explicitly asks. VendorDesk does not move money; 'paid' only records a payment the user made.
+- When reviewing invoices, compare the amount with the vendor's earlier invoices and point out anything unusual."""
 
 mcp = FastMCP(
     "VendorDesk",
@@ -71,8 +77,17 @@ def get_summary(ctx: Context) -> dict:
             elif v.status in ("requested", "needs_fixes") and days >= 3:
                 attention.append({"id": v.id, "vendor_name": v.vendor_name,
                                   "why": f"{v.status.replace('_', ' ')} for {days} days, consider a reminder"})
+        invs = db.execute(select(Invoice, Vendor).join(Vendor).where(Vendor.user_id == user.id,
+                                                                      Invoice.status.in_(["submitted", "approved"]))).all()
+        for inv, v in invs:
+            if inv.status == "submitted":
+                attention.append({"id": v.id, "vendor_name": v.vendor_name, "invoice_id": inv.id,
+                                  "why": f"Invoice {inv.invoice_number} ({inv.total_paise / 100:,.2f}) awaiting review"})
         return {"connected": True, "business_name": user.business_name,
                 "counts": {s: counts.get(s, 0) for s in STATUSES}, "needs_attention": attention,
+                "invoices": {"to_review": sum(1 for i, _ in invs if i.status == "submitted"),
+                             "approved_unpaid": sum(1 for i, _ in invs if i.status == "approved"),
+                             "approved_unpaid_total": sum(i.total_paise for i, _ in invs if i.status == "approved") / 100},
                 "dashboard": _base(ctx) + "/dashboard"}
 
 
@@ -203,3 +218,55 @@ def add_review_note(ctx: Context, id: int, findings: str, suggested_status: str 
         db.commit()
         return {"saved": True, "id": v.id, "status": v.status, "vendor_page_in_app": f"{_base(ctx)}/vendors/{v.id}",
                 "note": "Review saved. The follow-up message has not been sent; the user sends it."}
+
+
+@mcp.tool()
+def list_invoices(ctx: Context, status: str = "", vendor_id: int = 0, limit: int = 50) -> dict:
+    """List invoices that vendors sent through their VendorDesk link, newest first. Each has invoice number, date,
+    taxable/GST/total amounts, status (submitted = to review, approved = approved for payment, paid, rejected),
+    rule-based check results, any review note, payment date/reference, and the vendor's earlier invoice totals so
+    you can spot unusual amounts. Filter by status and/or vendor_id. Use this when the user asks about invoices,
+    bills, what to pay, or payment status."""
+    with SessionLocal() as db:
+        user = _user(db, ctx)
+        q = (select(Invoice, Vendor).join(Vendor).where(Vendor.user_id == user.id)
+             .order_by(Invoice.id.desc()).limit(max(1, min(limit, 200))))
+        if status:
+            if status not in INVOICE_STATUSES:
+                raise ValueError(f"Unknown invoice status '{status}'. Allowed: {INVOICE_STATUSES}")
+            q = q.where(Invoice.status == status)
+        if vendor_id:
+            _vendor(db, user, vendor_id)
+            q = q.where(Invoice.vendor_id == vendor_id)
+        out = []
+        for inv, v in db.execute(q).all():
+            d = invoice_dict(inv, v)
+            d["vendor_status"] = v.status
+            d["vendor_earlier_invoice_totals"] = [o.total_paise / 100 for o in v.invoices
+                                                  if o.id != inv.id and o.status != "rejected"][:12]
+            out.append(d)
+        return {"invoices": out}
+
+
+@mcp.tool()
+def update_invoice(ctx: Context, invoice_id: int, status: str = "", review_note: str = "", paid_on: str = "",
+                   payment_reference: str = "") -> dict:
+    """Update one invoice. review_note: your plain-language review (what checks out, what looks wrong) shown to
+    the user in the app. status: approved (approved for payment), rejected, paid, or submitted (back to review).
+    Only set approved, rejected or paid when the user explicitly asks. For paid, pass paid_on (YYYY-MM-DD, default
+    today) and payment_reference (e.g. UTR) if the user gave them. VendorDesk does not move money: paid records a
+    payment the user made, and the vendor sees it on their link. Changes are logged as made by Claude."""
+    with SessionLocal() as db:
+        user = _user(db, ctx)
+        inv = db.get(Invoice, invoice_id)
+        v = db.get(Vendor, inv.vendor_id) if inv else None
+        if not inv or v.user_id != user.id:
+            raise ValueError(f"No invoice with id {invoice_id}. Use list_invoices to find the right id.")
+        if review_note:
+            inv.review_note = review_note
+            log(db, v, "claude", "reviewed invoice", f"{inv.invoice_number}: {review_note[:200]}")
+            inv.updated_at = v.updated_at = now()
+        if status:
+            set_invoice_status(db, v, inv, status, "claude", paid_on, payment_reference)
+        db.commit()
+        return invoice_dict(inv, v) | {"vendor_page_in_app": f"{_base(ctx)}/vendors/{v.id}"}

@@ -4,7 +4,7 @@ import os
 import secrets
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, LargeBinary, String, Text, create_engine, select
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Integer, LargeBinary, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
 
@@ -73,6 +73,7 @@ class Vendor(Base):
     fields: Mapped["VendorFields"] = relationship(cascade="all, delete-orphan")
     files: Mapped[list["VendorFile"]] = relationship(cascade="all, delete-orphan", order_by="VendorFile.id")
     events: Mapped[list["Event"]] = relationship(cascade="all, delete-orphan", order_by="Event.id.desc()")
+    invoices: Mapped[list["Invoice"]] = relationship(cascade="all, delete-orphan", order_by="Invoice.id.desc()")
 
 
 class VendorFields(Base):
@@ -104,6 +105,34 @@ class VendorFile(Base):
     # Render's free disk is ephemeral, so files live in the database.
     data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+INVOICE_STATUSES = ["submitted", "approved", "paid", "rejected"]
+
+
+class Invoice(Base):
+    """A bill the vendor uploads on their public link after onboarding. Amounts are whole paise."""
+    __tablename__ = "invoices"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendors.id"), index=True)
+    invoice_number: Mapped[str] = mapped_column(String(60))
+    invoice_date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    taxable_paise: Mapped[int] = mapped_column(BigInteger)
+    gst_paise: Mapped[int] = mapped_column(BigInteger, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="submitted")
+    review_note: Mapped[str | None] = mapped_column(Text)  # Claude's or the user's note
+    paid_on: Mapped[str | None] = mapped_column(String(10))
+    payment_reference: Mapped[str | None] = mapped_column(String(100))
+    filename: Mapped[str | None] = mapped_column(String(300))
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    size: Mapped[int | None] = mapped_column(Integer)
+    data: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now, onupdate=now)
+
+    @property
+    def total_paise(self):
+        return self.taxable_paise + self.gst_paise
 
 
 class Event(Base):

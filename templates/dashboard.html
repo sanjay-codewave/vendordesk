@@ -20,6 +20,15 @@
   {% endfor %}
 </div>
 
+{% if counts.approved or inv_stats.to_review or inv_stats.to_pay_n %}
+<div class="invstrip card">
+  <div><span class="muted small">Invoices to review</span><b>{{ inv_stats.to_review }}</b></div>
+  <div><span class="muted small">Approved, to pay ({{ inv_stats.to_pay_n }})</span><b>{{ inv_stats.to_pay|inr }}</b></div>
+  <div><span class="muted small">Paid this month</span><b>{{ inv_stats.paid_month|inr }}</b></div>
+  <a class="btn" href="/api/payments.csv">Payment file (CSV)</a>
+</div>
+{% endif %}
+
 {% if rows %}
 <div class="filters">
   <input type="search" id="q" placeholder="Search vendor or contact" aria-label="Search vendors">
@@ -53,6 +62,7 @@
       <div class="vcard-foot small muted">
         {% if r.bank_account_number %}<span>A/c {{ r.bank_account_number }}</span>{% endif %}
         {% if r.has_claude_review %}<span class="badge soft">Claude reviewed</span>{% endif %}
+        {% if r.invoices_to_review %}<span class="badge inv">{{ r.invoices_to_review }} invoice{{ 's' if r.invoices_to_review > 1 }} to review</span>{% endif %}
         {% if r.status != 'approved' and r.days_in_status >= 1 %}<span class="pending {{ 'late' if r.days_in_status >= 3 }}">{{ r.days_in_status }}d no activity</span>{% endif %}
       </div>
     </a>
@@ -89,6 +99,7 @@
       <p class="prompt">“Use VendorDesk to onboard Sharma Packaging (contact Ravi, 9800000000, Maharashtra). I need GST, PAN, bank details and a cancelled cheque.”</p>
       <p class="prompt">“Review Sharma Packaging's submission and draft a follow-up.”</p>
       <p class="prompt">“What needs my attention in VendorDesk?”</p>
+      <p class="prompt">“Review this week's invoices and tell me what's safe to pay.”</p>
     </div>
   </div>
 </section>

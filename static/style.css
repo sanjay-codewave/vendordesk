@@ -171,3 +171,24 @@ label > input, label > textarea { margin-top: 5px; font-weight: 400; font-size: 
 @keyframes flashpanel { 0% { box-shadow: 0 0 0 4px rgba(15,118,110,.45); } 100% { box-shadow: 0 0 0 0 rgba(15,118,110,0); } }
 .flash-panel { animation: flashpanel 1.6s ease-out; border-color: var(--accent); }
 .demobar { border-color: #c7d7fe; background: #f5f8ff; }
+
+/* invoices */
+.invstrip { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; padding: 14px 20px; }
+.invstrip div { display: flex; flex-direction: column; }
+.invstrip b { font-size: 20px; }
+.invstrip .btn { margin-left: auto; }
+.badge.inv { color: #1d4ed8; background: #e0ecff; }
+.invoice { border: 1px solid var(--line); border-radius: 9px; padding: 14px; margin-bottom: 12px; }
+.invhead { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.invamt { text-align: right; font-weight: 650; font-size: 17px; }
+.istatus { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin-top: 4px; }
+.is-submitted { color: #1d4ed8; background: #e0ecff; } .is-approved { color: var(--s-verified); background: #f1ebff; }
+.is-paid { color: var(--pass); background: var(--pass-bg); } .is-rejected { color: var(--fail); background: var(--fail-bg); }
+.checks.compact .check { padding: 5px 0; font-size: 13px; }
+.invnote { display: flex; gap: 8px; align-items: flex-end; margin: 6px 0 10px; }
+.invnote label { flex: 1; margin: 0; }
+.invactions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.paidform input { width: auto; padding: 6px 8px; font-size: 14px; }
+.paidform input[name=payment_reference] { width: 150px; }
+.invtable td { vertical-align: top; }
+@media (max-width: 760px) { .invstrip { gap: 14px; } .invstrip .btn { margin-left: 0; } .invnote { flex-direction: column; align-items: stretch; } }

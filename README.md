@@ -7,6 +7,11 @@ vendor record and a public link. The vendor opens the link (no login), fills in 
 documents. VendorDesk checks every field the same way every time. You review in Claude or in the app, edit anything,
 approve and export.
 
+After onboarding, the **same link becomes the vendor's monthly portal**: they send invoices there and see when each
+one is approved and paid. VendorDesk checks every invoice (duplicate number, vendor approved, standard GST rate,
+date, document attached), Claude reviews them and flags unusual amounts, and you approve, mark paid and download a
+payment file with the vendor's checked bank details. VendorDesk never moves money.
+
 **No AI inside the app.** There are no model calls, no AI keys and no AI, ML or OCR libraries. All the thinking and
 writing happens in the customer's own Claude, which connects over MCP. The `mcp` dependency is the open
 [Model Context Protocol](https://modelcontextprotocol.io) server SDK. It only defines tools that Claude can call. It
@@ -20,7 +25,8 @@ is not an AI client.
 | Writes request and follow-up messages | Stores details and uploaded documents |
 | Reviews a submission and explains issues | Runs rule-based checks: GSTIN regex + state code + check digit, PAN, PAN-inside-GSTIN, IFSC, account number, state match, account-holder name match |
 | Changes status, checklist and notes on request | Keeps status, notes and an audit trail (vendor / you / Claude) |
-| | Lets a person edit any field, approve and export CSV |
+| Reviews invoices, compares with earlier ones | Checks invoices, tracks Approved/Paid, shows the vendor payment status |
+| | Lets a person edit any field, approve and export CSV / payment file |
 
 ## Connect to Claude
 
@@ -36,6 +42,8 @@ Try:
 - "Review Sharma Packaging's submission and draft a follow-up."
 - "Mark Sharma Packaging as needs fixes."
 - "What needs my attention in VendorDesk?"
+- "Review this week's invoices and tell me what's safe to pay."
+- "Mark Sharma Packaging's invoice INV-1042 as paid, UTR 4402918."
 
 ### Fake vendor data for testing the public form
 
@@ -48,11 +56,13 @@ Try:
 | Account number | `50100123456789` | `12AB` |
 | Account holder | Sharma Packaging | Ravi Sharma (warning: differs from business) |
 
-All values are made up. Uploads must be PDF, JPG or PNG, up to 5 MB.
+All values are made up. Uploads must be PDF, JPG or PNG, up to 5 MB. On the demo account the vendor form has
+"Fill correct sample" / "Fill with mistakes" buttons, and the invoice form has sample-invoice links.
 
 ## MCP tools
 
-`get_summary`, `create_vendor_request`, `list_vendors`, `get_vendor`, `update_vendor`, `add_review_note`.
+`get_summary`, `create_vendor_request`, `list_vendors`, `get_vendor`, `update_vendor`, `add_review_note`,
+`list_invoices`, `update_invoice`.
 Transport: Streamable HTTP (stateless, JSON responses). Each user's token is in the URL path.
 
 ## Run locally

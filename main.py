@@ -4,7 +4,8 @@ import io
 import os
 import secrets
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import date, timedelta
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -13,12 +14,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
-from checks import FIELD_LABELS, GST_STATES, ITEMS
+from checks import FIELD_LABELS, ITEMS
 from mcp_server import mcp
-from models import (FIELD_NAMES, FILE_KINDS, STATUSES, Event, SessionLocal, User, Vendor, VendorFile,
-                    hash_password, init_db, now, verify_password)
+from invoices import INVOICE_STATUS_LABELS, inr, invoice_checks, parse_amount, parse_date
+from models import (FIELD_NAMES, FILE_KINDS, INVOICE_STATUSES, STATUSES, Event, Invoice, SessionLocal, User, Vendor,
+                    VendorFile, hash_password, init_db, now, verify_password)
 from services import (STATUS_LABELS, base_url, ensure_fields, log, mask, public_link, save_fields, set_status,
-                      share_links, vendor_checks, vendor_summary)
+                      set_invoice_status, share_links, vendor_checks, vendor_summary)
 from checks import summarize
 
 MAX_FILE = 5 * 1024 * 1024
@@ -62,7 +64,8 @@ app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SECRET_KEY") or
 app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 templates.env.globals.update(STATUS_LABELS=STATUS_LABELS, STATUSES=STATUSES, FIELD_LABELS=FIELD_LABELS,
-                             FILE_LABELS=FILE_LABELS, ITEMS=ITEMS, mask=mask)
+                             FILE_LABELS=FILE_LABELS, ITEMS=ITEMS, mask=mask, INVOICE_STATUS_LABELS=INVOICE_STATUS_LABELS,
+                             invoice_checks=invoice_checks, summarize=summarize)
 
 
 def ist(dt):
@@ -70,6 +73,24 @@ def ist(dt):
 
 
 templates.env.filters["ist"] = ist
+templates.env.filters["inr"] = inr
+
+
+def check_upload(filename, data):
+    """Returns (content_type, error). Only real PDF, JPG or PNG files up to 5 MB."""
+    ext = (filename or "").rsplit(".", 1)[-1].lower()
+    ctype = ALLOWED_TYPES.get(ext)
+    if not ctype:
+        return None, "Only PDF, JPG or PNG files are accepted."
+    if len(data) > MAX_FILE:
+        return None, "File is larger than 5 MB. Please upload a smaller file."
+    if not data.startswith(MAGIC[ctype]):
+        return None, "That file does not look like a real PDF, JPG or PNG."
+    return ctype, None
+
+
+def safe_name(name):
+    return "".join(c for c in (name or "") if c.isalnum() or c in "._- ") or "file"
 
 
 @app.middleware("http")
@@ -165,7 +186,15 @@ def dashboard(request: Request):
         rows = [vendor_summary(v, b) | {"created_by": v.created_by, "contact_phone": v.contact_phone}
                 for v in vendors]
         counts = {s: sum(1 for r in rows if r["status"] == s) for s in STATUSES}
-        return render(request, "dashboard.html", user=user, rows=rows, counts=counts,
+        invs = [i for v in vendors for i in v.invoices]
+        month = date.today().isoformat()[:7]
+        inv_stats = {"to_review": sum(1 for i in invs if i.status == "submitted"),
+                     "to_pay": sum(i.total_paise for i in invs if i.status == "approved"),
+                     "to_pay_n": sum(1 for i in invs if i.status == "approved"),
+                     "paid_month": sum(i.total_paise for i in invs if i.status == "paid" and (i.paid_on or "")[:7] == month)}
+        for r, v in zip(rows, vendors):
+            r["invoices_to_review"] = sum(1 for i in v.invoices if i.status == "submitted")
+        return render(request, "dashboard.html", user=user, rows=rows, counts=counts, inv_stats=inv_stats,
                       mcp_url=f"{b}/mcp/{user.token}", stamp=_user_stamp(db, user),
                       local=any(h in b for h in ("127.0.0.1", "localhost", "0.0.0.0")))
 
@@ -186,7 +215,7 @@ def stamp(request: Request, vendor: int | None = None):
             return JSONResponse({"error": "login"}, 401)
         if vendor:
             v = own_vendor(db, user, vendor)
-            return {"stamp": f"{v.updated_at.isoformat()}-{len(v.events)}-{len(v.files)}"}
+            return {"stamp": f"{v.updated_at.isoformat()}-{len(v.events)}-{len(v.files)}-{len(v.invoices)}"}
         return {"stamp": _user_stamp(db, user)}
 
 
@@ -222,7 +251,8 @@ def vendor_page(request: Request, vendor_id: int):
                       summary=summarize(checks), link=public_link(v, b),
                       request_share=share_links(v, v.request_message, b),
                       followup_share=share_links(v, v.follow_up_message, b),
-                      stamp=f"{v.updated_at.isoformat()}-{len(v.events)}-{len(v.files)}",
+                      stamp=f"{v.updated_at.isoformat()}-{len(v.events)}-{len(v.files)}-{len(v.invoices)}",
+                      today=date.today().isoformat(),
                       saved=request.query_params.get("saved"))
 
 
@@ -279,9 +309,8 @@ def download_file(request: Request, vendor_id: int, file_id: int):
         f = db.get(VendorFile, file_id)
         if not f or f.vendor_id != v.id:
             raise HTTPException(404)
-        safe = "".join(c for c in f.filename if c.isalnum() or c in "._- ") or "file"
         return Response(f.data, media_type=f.content_type,
-                        headers={"Content-Disposition": f'inline; filename="{safe}"',
+                        headers={"Content-Disposition": f'inline; filename="{safe_name(f.filename)}"',
                                  "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"})
 
 
@@ -325,7 +354,8 @@ def public_form(request: Request, token: str):
         owner = db.get(User, v.user_id)
         return render(request, "public_form.html", v=v, owner=owner, f=ensure_fields(v).as_dict(),
                       fields=form_fields(v), uploads=form_uploads(v), state=public_state(v),
-                      states=sorted(set(GST_STATES.values())))
+                      today=date.today().isoformat(), inv_sent=request.query_params.get("inv") == "sent",
+                      inv_error=request.query_params.get("inv_error"))
 
 
 @app.post("/v/{token}/save")
@@ -361,14 +391,10 @@ async def public_upload(token: str, kind: str = Form(...), file: UploadFile = Fi
             return JSONResponse({"error": "This form has been submitted and is locked."}, 409)
         if kind not in FILE_KINDS:
             return JSONResponse({"error": "Unknown document type."}, 400)
-        ext = (file.filename or "").rsplit(".", 1)[-1].lower()
-        ctype = ALLOWED_TYPES.get(ext)
-        if not ctype:
-            return JSONResponse({"error": "Only PDF, JPG or PNG files are accepted."}, 400)
-        if len(data) > MAX_FILE:
-            return JSONResponse({"error": "File is larger than 5 MB. Please upload a smaller file."}, 400)
-        if not data.startswith(MAGIC[ctype]):
-            return JSONResponse({"error": "That file does not look like a real PDF, JPG or PNG."}, 400)
+        ctype, error = check_upload(file.filename, data)
+        if error:
+            return JSONResponse({"error": error}, 400)
+        ext = file.filename.rsplit(".", 1)[-1].lower()
         if kind != "other":  # one file per document type; a new upload replaces the old one
             for old in [f for f in v.files if f.kind == kind]:
                 v.files.remove(old)
@@ -409,6 +435,110 @@ def public_submit(token: str):
             f"{s['pass']} passed, {s['fail']} failed, {s['warn']} warnings, {s['missing']} missing")
         db.commit()
         return public_state(v)
+
+
+# ---------- invoices ----------
+
+@app.post("/v/{token}/invoices")
+async def public_invoice(token: str, invoice_number: str = Form(""), invoice_date: str = Form(""),
+                         taxable_amount: str = Form(""), gst_amount: str = Form("0"),
+                         file: UploadFile | None = File(None)):
+    back = f"/v/{token}"
+    data = await file.read(MAX_FILE + 1) if file and file.filename else b""
+    with SessionLocal() as db:
+        v = public_vendor(db, token)
+        try:
+            if v.status != "approved":
+                raise ValueError("Invoices can be sent once your onboarding is approved.")
+            number = invoice_number.strip()[:60]
+            if not number:
+                raise ValueError("Invoice number is required.")
+            inv = Invoice(invoice_number=number, invoice_date=parse_date(invoice_date),
+                          taxable_paise=parse_amount(taxable_amount, "Taxable amount"),
+                          gst_paise=parse_amount(gst_amount or "0", "GST amount"))
+            if data:
+                ctype, error = check_upload(file.filename, data)
+                if error:
+                    raise ValueError(error)
+                inv.filename, inv.content_type, inv.size, inv.data = (
+                    os.path.basename(file.filename)[:200], ctype, len(data), data)
+        except ValueError as e:
+            return RedirectResponse(f"{back}?inv_error={quote(str(e))}#invoices", 303)
+        v.invoices.append(inv)
+        log(db, v, "vendor", "submitted invoice", f"{inv.invoice_number} · {inr(inv.total_paise)}")
+        v.updated_at = now()
+        db.commit()
+    return RedirectResponse(f"{back}?inv=sent#invoices", 303)
+
+
+def own_invoice(db, user, vendor_id, invoice_id):
+    v = own_vendor(db, user, vendor_id)
+    inv = db.get(Invoice, invoice_id)
+    if not inv or inv.vendor_id != v.id:
+        raise HTTPException(404, "Invoice not found")
+    return v, inv
+
+
+@app.post("/vendors/{vendor_id}/invoices/{invoice_id}/status")
+def invoice_status(request: Request, vendor_id: int, invoice_id: int, status: str = Form(...),
+                   paid_on: str = Form(""), payment_reference: str = Form("")):
+    with SessionLocal() as db:
+        user = require_user(request, db)
+        v, inv = own_invoice(db, user, vendor_id, invoice_id)
+        try:
+            set_invoice_status(db, v, inv, status, "you", paid_on, payment_reference)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        db.commit()
+    return RedirectResponse(f"/vendors/{vendor_id}#inv-{invoice_id}", 303)
+
+
+@app.post("/vendors/{vendor_id}/invoices/{invoice_id}/note")
+def invoice_note(request: Request, vendor_id: int, invoice_id: int, review_note: str = Form("")):
+    with SessionLocal() as db:
+        user = require_user(request, db)
+        v, inv = own_invoice(db, user, vendor_id, invoice_id)
+        value = review_note.strip() or None
+        if value != inv.review_note:
+            inv.review_note = value
+            log(db, v, "you", "edited invoice note", inv.invoice_number)
+            inv.updated_at = v.updated_at = now()
+        db.commit()
+    return RedirectResponse(f"/vendors/{vendor_id}#inv-{invoice_id}", 303)
+
+
+@app.get("/vendors/{vendor_id}/invoices/{invoice_id}/file")
+def invoice_file(request: Request, vendor_id: int, invoice_id: int):
+    with SessionLocal() as db:
+        user = require_user(request, db)
+        _, inv = own_invoice(db, user, vendor_id, invoice_id)
+        if not inv.filename:
+            raise HTTPException(404)
+        return Response(inv.data, media_type=inv.content_type,
+                        headers={"Content-Disposition": f'inline; filename="{safe_name(inv.filename)}"',
+                                 "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"})
+
+
+@app.get("/api/payments.csv")
+def payments_csv(request: Request):
+    """Payment file: invoices approved for payment, with the vendor's checked bank details."""
+    with SessionLocal() as db:
+        user = require_user(request, db)
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(["vendor_name", "invoice_number", "invoice_date", "taxable_amount", "gst_amount", "total",
+                    "account_name", "account_number", "ifsc", "bank_name", "gstin", "vendor_status"])
+        rows = db.execute(select(Invoice, Vendor).join(Vendor).where(Vendor.user_id == user.id,
+                                                                     Invoice.status == "approved")
+                          .order_by(Vendor.vendor_name, Invoice.invoice_date)).all()
+        for inv, v in rows:
+            f = ensure_fields(v)
+            row = [v.vendor_name, inv.invoice_number, inv.invoice_date, f"{inv.taxable_paise / 100:.2f}",
+                   f"{inv.gst_paise / 100:.2f}", f"{inv.total_paise / 100:.2f}", f.bank_account_name,
+                   f.bank_account_number, f.ifsc, f.bank_name, f.gstin, v.status]
+            w.writerow(["'" + c if isinstance(c, str) and c[:1] in "=+-@" else (c or "") for c in row])
+        return Response(out.getvalue(), media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="payment-file.csv"'})
 
 
 @app.get("/healthz")

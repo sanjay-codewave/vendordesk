@@ -1,5 +1,24 @@
 // Public vendor form: autosave, live rule-based check messages, uploads, submit. Plain JS.
 (function () {
+  // Invoice form helpers (approved vendors): live total and demo samples. Runs before the onboarding form code.
+  const invform = document.getElementById("invform");
+  if (invform) {
+    const num = (x) => parseFloat((x || "").replace(/[₹,\s]/g, "")) || 0;
+    const showTotal = () => {
+      const t = num(invform.taxable_amount.value) + num(invform.gst_amount.value);
+      document.getElementById("invtotal").textContent = t ? "Total: ₹" + t.toLocaleString("en-IN", { minimumFractionDigits: 2 }) : "";
+    };
+    invform.addEventListener("input", showTotal);
+    document.querySelectorAll("[data-invsample]").forEach((b) => b.addEventListener("click", () => {
+      const odd = b.dataset.invsample === "odd";
+      invform.invoice_number.value = "INV-" + (1000 + Math.floor(Math.random() * 9000));
+      invform.taxable_amount.value = odd ? "48,000.00" : "12,500.00";
+      invform.gst_amount.value = odd ? "7,000.00" : "2,250.00";
+      showTotal();
+    }));
+  }
+  if (!document.getElementById("vform")) return;
+
   const base = location.pathname.replace(/\/$/, "");
   const form = document.getElementById("vform");
   const saveState = document.getElementById("savestate");
@@ -21,9 +40,11 @@
   function render(s) {
     state = s;
     if (!s.editable) {
+      const wasOpen = !document.getElementById("formarea").hidden;
       document.getElementById("formarea").hidden = true;
-      document.getElementById("locked").hidden = false;
-      window.scrollTo(0, 0);
+      const locked = document.getElementById("locked");
+      if (locked) locked.hidden = false;
+      if (wasOpen) window.scrollTo(0, 0);  // only when the vendor has just submitted
       return;
     }
     // Field messages
