@@ -13,6 +13,16 @@ window.VD = (function () {
     const t = b.textContent; b.textContent = "Copied"; setTimeout(() => (b.textContent = t), 1500);
   });
 
+  // Demo: tap an example under a field to fill it.
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fill]");
+    if (!b) return;
+    e.preventDefault();
+    const input = b.closest("form").querySelector(`[name="${b.dataset.fill}"]`);
+    input.value = b.dataset.value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
   // Confirm before risky submits: <form data-confirm="...">
   document.addEventListener("submit", (e) => {
     const msg = e.target.dataset.confirm;

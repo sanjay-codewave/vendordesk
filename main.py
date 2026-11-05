@@ -23,6 +23,19 @@ from services import (STATUS_LABELS, base_url, ensure_fields, log, mask, public_
                       set_invoice_status, share_links, vendor_checks, vendor_summary)
 from checks import summarize
 
+# Format hints shown under fields: (rule, made-up example that passes every check).
+FIELD_HINTS = {
+    "legal_name": ("As on the GST certificate", "Sharma Packaging Pvt Ltd"),
+    "gstin": ("15 characters: 2-digit state code + PAN + 1Z + check character", "27ABCCS1234K1ZD"),
+    "pan": ("5 letters, 4 digits, 1 letter. Must match characters 3-12 of the GSTIN", "ABCCS1234K"),
+    "address": (None, "Plot 14, MIDC Bhosari, Pune, Maharashtra 411026"),
+    "bank_account_name": ("Name exactly as on the cheque", "Sharma Packaging Pvt Ltd"),
+    "bank_account_number": ("9 to 18 digits, no spaces", "50100123456789"),
+    "ifsc": ("11 characters: 4 letters, 0, then 6 letters/digits", "HDFC0001234"),
+    "bank_name": (None, "HDFC Bank"),
+    "msme_number": ("Udyam registration number", "UDYAM-MH-26-0012345"),
+}
+
 MAX_FILE = 5 * 1024 * 1024
 ALLOWED_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}
 MAGIC = {"application/pdf": b"%PDF", "image/jpeg": b"\xff\xd8\xff", "image/png": b"\x89PNG"}
@@ -65,7 +78,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(os.path.dirname(__file__
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 templates.env.globals.update(STATUS_LABELS=STATUS_LABELS, STATUSES=STATUSES, FIELD_LABELS=FIELD_LABELS,
                              FILE_LABELS=FILE_LABELS, ITEMS=ITEMS, mask=mask, INVOICE_STATUS_LABELS=INVOICE_STATUS_LABELS,
-                             invoice_checks=invoice_checks, summarize=summarize)
+                             invoice_checks=invoice_checks, summarize=summarize, FIELD_HINTS=FIELD_HINTS)
 
 
 def ist(dt):

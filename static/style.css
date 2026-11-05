@@ -192,3 +192,7 @@ label > input, label > textarea { margin-top: 5px; font-weight: 400; font-size: 
 .paidform input[name=payment_reference] { width: 150px; }
 .invtable td { vertical-align: top; }
 @media (max-width: 760px) { .invstrip { gap: 14px; } .invstrip .btn { margin-left: 0; } .invnote { flex-direction: column; align-items: stretch; } }
+
+.fhint { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.fill { border: 1px dashed #9ec9c3; background: var(--accent-soft); color: var(--accent); border-radius: 5px; padding: 0 6px; font: 600 12px ui-monospace, Menlo, monospace; cursor: pointer; }
+.fill:hover { background: #d3ece8; }

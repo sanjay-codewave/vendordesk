@@ -6,7 +6,7 @@
   <span class="small muted">via VendorDesk</span></header>
 {% endblock %}
 {% block mainclass %}wrap narrow{% endblock %}
-{% block content %}
+{% block content %}{% set demo = owner.username == 'demo' %}
 {% if v.status == 'approved' %}
 <section class="intro">
   <h1>{{ v.vendor_name }} · vendor portal for {{ owner.business_name }}</h1>
@@ -61,9 +61,10 @@
         {% else %}<input name="{{ name }}" value="{{ f[name] or '' }}"
           {% if name in ('gstin','pan','ifsc','msme_number') %}class="mono" autocapitalize="characters" spellcheck="false"{% endif %}
           {% if name == 'bank_account_number' %}inputmode="numeric"{% endif %}
-          {% if name == 'gstin' %}maxlength="15" placeholder="27ABCCS1234K1ZD"{% endif %}
-          {% if name == 'pan' %}maxlength="10" placeholder="ABCCS1234K"{% endif %}
-          {% if name == 'ifsc' %}maxlength="11" placeholder="HDFC0001234"{% endif %}>{% endif %}
+          {% if name == 'gstin' %}maxlength="15"{% endif %}
+          {% if name == 'pan' %}maxlength="10"{% endif %}
+          {% if name == 'ifsc' %}maxlength="11"{% endif %}>{% endif %}
+        {% set h = FIELD_HINTS.get(name) %}{% if h %}<span class="fhint">{% if h[0] %}{{ h[0] }}. {% endif %}{% if demo %}Example: <button type="button" class="fill" data-fill="{{ name }}" data-value="{{ h[1] }}" title="Tap to use">{{ h[1] }}</button>{% elif h[0] %}e.g. {{ h[1] }}{% endif %}</span>{% endif %}
         <span class="fmsg" data-for="{{ name }}"></span>
       </label>
       {% endfor %}
@@ -100,7 +101,8 @@
     <label>Invoice number <input name="invoice_number" required maxlength="60" placeholder="INV-1043"></label>
     <label>Invoice date <input name="invoice_date" type="date" required max="{{ today }}" value="{{ today }}"></label>
     <label>Taxable amount (₹) <input name="taxable_amount" required inputmode="decimal" placeholder="12,500.00"></label>
-    <label>GST amount (₹) <input name="gst_amount" inputmode="decimal" placeholder="2,250.00" value="0"></label>
+    <label>GST amount (₹) <input name="gst_amount" inputmode="decimal" placeholder="2,250.00" value="0">
+      <span class="fhint">Usually 5% or 18% of the taxable amount (18% of 12,500 = 2,250).</span></label>
     <label class="wide">Invoice PDF or photo <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"></label>
     <div class="wide formfoot"><button class="btn primary">Send invoice</button>
       <span class="small muted" id="invtotal"></span></div>

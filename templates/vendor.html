@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ v.vendor_name }} · VendorDesk{% endblock %}
-{% block content %}
+{% block content %}{% set demo = user.username == 'demo' %}
 <a class="back small" href="/dashboard">← All vendors</a>
 <div class="pagehead">
   <div>
@@ -120,6 +120,7 @@
         <label class="{{ 'wide' if name == 'address' }}">{{ label }}
           {% if name == 'address' %}<textarea name="{{ name }}" rows="2">{{ f[name] or '' }}</textarea>
           {% else %}<input name="{{ name }}" value="{{ f[name] or '' }}" {% if name in ('gstin','pan','ifsc') %}class="mono"{% endif %}>{% endif %}
+          {% set h = FIELD_HINTS.get(name) %}{% if h %}<span class="fhint">{% if h[0] %}{{ h[0] }}. {% endif %}{% if demo %}Example: <button type="button" class="fill" data-fill="{{ name }}" data-value="{{ h[1] }}" title="Tap to use">{{ h[1] }}</button>{% elif h[0] %}e.g. {{ h[1] }}{% endif %}</span>{% endif %}
         </label>
         {% endfor %}
         <div class="wide formfoot"><button class="btn primary">Save changes</button>
