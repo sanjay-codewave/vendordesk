@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}VendorDesk{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+{% block header %}
+<header class="topbar">
+  <a class="brand" href="/dashboard"><span class="logo">V</span> VendorDesk</a>
+  {% if user %}
+  <nav class="topnav">
+    <span class="muted hide-sm">{{ user.business_name }}</span>
+    <a href="/dashboard">Board</a>
+    <form method="post" action="/logout"><button class="linkbtn">Log out</button></form>
+  </nav>
+  {% endif %}
+</header>
+{% endblock %}
+<main class="{% block mainclass %}wrap{% endblock %}">
+{% block content %}{% endblock %}
+</main>
+<script src="/static/app.js?v=1"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

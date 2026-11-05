@@ -1,0 +1,9 @@
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+jinja2==3.1.6
+itsdangerous==2.2.0
+python-multipart==0.0.33
+SQLAlchemy==2.1.8
+psycopg[binary]==3.3.8
+# Model Context Protocol SDK (open protocol server library, not an AI client). 2.x renamed FastMCP: stay on 1.x.
+mcp>=1.12,<2

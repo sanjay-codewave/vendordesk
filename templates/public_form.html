@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Vendor details for {{ owner.business_name }}{% endblock %}
+{% block bodyclass %}public{% endblock %}
+{% block header %}
+<header class="topbar"><span class="brand"><span class="logo">V</span> {{ owner.business_name }}</span>
+  <span class="small muted">via VendorDesk</span></header>
+{% endblock %}
+{% block mainclass %}wrap narrow{% endblock %}
+{% block content %}
+<section class="intro">
+  <h1>Hello{% if v.contact_name %} {{ v.contact_name }}{% endif %}, please share {{ v.vendor_name }}'s details</h1>
+  <p class="muted">{{ owner.business_name }} needs these to add you as a vendor and pay you. Your progress saves
+    automatically, so you can come back to this link later.</p>
+</section>
+
+<div id="locked" class="card done" {% if state.editable %}hidden{% endif %}>
+  <h2>Thank you, your details are submitted</h2>
+  <p>{{ owner.business_name }} will review them. If anything needs fixing, they will contact you and this link will open for edits again.</p>
+</div>
+
+{% if v.status == 'needs_fixes' %}
+<div class="card fixes"><b>{{ owner.business_name }} asked for some fixes.</b> Please correct the items marked below and submit again.</div>
+{% endif %}
+
+<div id="formarea" {% if not state.editable %}hidden{% endif %}>
+  <section class="card">
+    <h2>What's needed</h2>
+    <ul class="items" id="items">
+      {% for key in v.required_items %}<li data-item="{{ key }}">{{ ITEMS[key].label }}</li>{% endfor %}
+    </ul>
+    <div class="progress"><span id="progressbar"></span></div>
+    <p class="small muted" id="progresstext"></p>
+  </section>
+
+  <section class="card">
+    <h2>Business and bank details</h2>
+    <form id="vform" class="fieldgrid" autocomplete="off" novalidate>
+      {% for name in fields %}
+      <label class="{{ 'wide' if name in ('address', 'legal_name') }}">{{ FIELD_LABELS[name] }}
+        {% if name == 'address' %}<textarea name="{{ name }}" rows="3">{{ f[name] or '' }}</textarea>
+        {% else %}<input name="{{ name }}" value="{{ f[name] or '' }}"
+          {% if name in ('gstin','pan','ifsc','msme_number') %}class="mono" autocapitalize="characters" spellcheck="false"{% endif %}
+          {% if name == 'bank_account_number' %}inputmode="numeric"{% endif %}
+          {% if name == 'gstin' %}maxlength="15" placeholder="27ABCDE1234F1Z5"{% endif %}
+          {% if name == 'pan' %}maxlength="10" placeholder="ABCDE1234F"{% endif %}
+          {% if name == 'ifsc' %}maxlength="11" placeholder="HDFC0001234"{% endif %}>{% endif %}
+        <span class="fmsg" data-for="{{ name }}"></span>
+      </label>
+      {% endfor %}
+    </form>
+    <p class="small muted" id="savestate">&nbsp;</p>
+  </section>
+
+  <section class="card">
+    <h2>Documents</h2>
+    <p class="small muted">PDF, JPG or PNG, up to 5 MB each. A photo from your phone is fine.</p>
+    <div class="uploads">
+      {% for kind in uploads %}
+      <div class="upload" data-kind="{{ kind }}">
+        <div><b>{{ FILE_LABELS[kind] }}</b>{% if kind == 'other' %} <span class="muted small">(optional)</span>{% endif %}
+          <ul class="ufiles"></ul><span class="fmsg"></span></div>
+        <label class="btn small-btn">Choose file<input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" hidden></label>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card submitcard">
+    <ul class="checks" id="checks"></ul>
+    <button class="btn primary big" id="submitbtn">Submit details</button>
+    <p class="small muted">Checks here are automatic format checks. {{ owner.business_name }} reviews everything before approving.</p>
+  </section>
+</div>
+<script type="application/json" id="initial">{{ state|tojson }}</script>
+<script type="application/json" id="itemlabels">{{ ITEMS|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/vendor_form.js?v=1"></script>{% endblock %}

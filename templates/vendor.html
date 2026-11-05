@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ v.vendor_name }} · VendorDesk{% endblock %}
+{% block content %}
+<a class="back small" href="/dashboard">← All vendors</a>
+<div class="pagehead">
+  <div>
+    <h1>{{ v.vendor_name }} <span class="status st-{{ v.status }}">{{ STATUS_LABELS[v.status] }}</span></h1>
+    <p class="muted">
+      {{ v.contact_name or 'No contact name' }}
+      {% if v.contact_phone %} · {{ v.contact_phone }}{% endif %}
+      {% if v.contact_email %} · {{ v.contact_email }}{% endif %}
+      {% if v.category %} · {{ v.category }}{% endif %}
+      {% if v.state %} · {{ v.state }}{% endif %}
+      {% if v.created_by == 'claude' %} · <span class="badge claude">Created by Claude</span>{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <form method="post" action="/vendors/{{ v.id }}/status" class="inline">
+      <select name="status" aria-label="Status">
+        {% for s in STATUSES %}<option value="{{ s }}" {% if s == v.status %}selected{% endif %}>{{ STATUS_LABELS[s] }}</option>{% endfor %}
+      </select>
+      <button class="btn">Set status</button>
+    </form>
+    {% if v.status != 'approved' %}
+    <form method="post" action="/vendors/{{ v.id }}/status" class="inline"
+          {% if summary.fail or summary.missing %}data-confirm="Some checks failed or items are missing. Approve anyway?"{% endif %}>
+      <input type="hidden" name="status" value="approved">
+      <button class="btn approve">Approve</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card linkcard">
+  <div class="copyrow">
+    <label class="small muted" for="publink">Vendor's link (no login needed)</label>
+    <input id="publink" readonly value="{{ link }}">
+    <button class="btn" data-copy="#publink">Copy link</button>
+    <a class="btn" href="{{ link }}" target="_blank" rel="noopener">Open as vendor</a>
+  </div>
+</div>
+
+{% if saved %}<p class="flash">Saved.</p>{% endif %}
+
+<div class="detail">
+  <div class="maincol">
+    <section class="card">
+      <div class="cardhead">
+        <h2>Checks</h2>
+        <span class="small muted">{{ summary.pass }} passed · {{ summary.fail }} failed · {{ summary.warn }} warnings · {{ summary.missing }} missing</span>
+      </div>
+      {% if checks %}
+      <ul class="checks">
+        {% for c in checks %}
+        <li class="check {{ c.status }}"><span class="ci" aria-hidden="true"></span>
+          <span><b>{{ c.label }}</b> <span class="muted">{{ c.reason }}</span></span>
+          <span class="tag {{ c.status }}">{{ c.status }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">No details submitted yet.</p>{% endif %}
+      <p class="small muted">Rule-based checks (format, GSTIN check digit, PAN-in-GSTIN, state, names). They don't confirm a registration is active.</p>
+    </section>
+
+    <section class="card">
+      <div class="cardhead"><h2>Vendor details</h2>
+        <span class="small muted">{% if v.submitted_at %}Submitted {{ v.submitted_at|ist }} IST{% else %}Not submitted yet{% endif %}</span></div>
+      <form method="post" action="/vendors/{{ v.id }}/fields" class="fieldgrid watch">
+        {% for name, label in FIELD_LABELS.items() %}
+        <label class="{{ 'wide' if name == 'address' }}">{{ label }}
+          {% if name == 'address' %}<textarea name="{{ name }}" rows="2">{{ f[name] or '' }}</textarea>
+          {% else %}<input name="{{ name }}" value="{{ f[name] or '' }}" {% if name in ('gstin','pan','ifsc') %}class="mono"{% endif %}>{% endif %}
+        </label>
+        {% endfor %}
+        <div class="wide formfoot"><button class="btn primary">Save changes</button>
+          <span class="small muted">Your edits are logged in the history as “You”.</span></div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Documents</h2>
+      <ul class="items">
+        {% for key in v.required_items %}
+        {% set done = checks|selectattr('key', 'equalto', 'item:' ~ key)|selectattr('status', 'equalto', 'pass')|list %}
+        <li class="{{ 'done' if done else 'todo' }}">{{ ITEMS[key].label if key in ITEMS else key }}</li>
+        {% endfor %}
+      </ul>
+      {% if v.files %}
+      <table class="files">
+        {% for file in v.files %}
+        <tr><td>{{ FILE_LABELS[file.kind] }}</td>
+          <td><a href="/vendors/{{ v.id }}/files/{{ file.id }}" target="_blank" rel="noopener">{{ file.filename }}</a></td>
+          <td class="muted small">{{ (file.size / 1024)|round(0)|int }} KB · {{ file.uploaded_at|ist }}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="muted">No files uploaded yet.</p>{% endif %}
+    </section>
+  </div>
+
+  <div class="sidecol">
+    <form method="post" action="/vendors/{{ v.id }}/texts" class="watch">
+      <section class="card claudecard">
+        <div class="cardhead"><h2>Claude's review</h2>
+          {% if v.reviewed_at %}<span class="small muted">{{ v.reviewed_at|ist }} IST</span>{% endif %}</div>
+        {% if v.review_findings or v.follow_up_message %}
+        <label>Findings <textarea name="review_findings" rows="6">{{ v.review_findings or '' }}</textarea></label>
+        <label>Drafted follow-up <textarea name="follow_up_message" rows="5">{{ v.follow_up_message or '' }}</textarea></label>
+        {% if followup_share %}
+        <div class="share">
+          <a class="btn wa" href="{{ followup_share.whatsapp }}" target="_blank" rel="noopener">Send on WhatsApp</a>
+          <a class="btn" href="{{ followup_share.email }}">Email</a>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="muted">No review yet. In Claude, ask: <span class="prompt">“Review {{ v.vendor_name }}'s submission.”</span></p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2>Request message</h2>
+        <textarea name="request_message" rows="6" aria-label="Request message">{{ v.request_message or '' }}</textarea>
+        {% if request_share %}
+        <div class="share">
+          <a class="btn wa" href="{{ request_share.whatsapp }}" target="_blank" rel="noopener">Send on WhatsApp</a>
+          <a class="btn" href="{{ request_share.email }}">Email</a>
+        </div>
+        {% endif %}
+        <p class="small muted">VendorDesk never sends messages. These buttons open WhatsApp or your email with the text filled in.</p>
+      </section>
+
+      <section class="card">
+        <h2>Notes</h2>
+        <textarea name="notes" rows="3" aria-label="Notes">{{ v.notes or '' }}</textarea>
+        <div class="formfoot"><button class="btn primary">Save texts</button></div>
+      </section>
+    </form>
+
+    <section class="card">
+      <h2>History</h2>
+      <ol class="history">
+        {% for e in v.events %}
+        <li><span class="actor {{ e.actor }}">{{ {'you': 'You', 'claude': 'Claude', 'vendor': 'Vendor'}[e.actor] }}</span>
+          <span>{{ e.action }}{% if e.detail %}<span class="muted">: {{ e.detail }}</span>{% endif %}</span>
+          <time class="small muted">{{ e.created_at|ist }}</time></li>
+        {% endfor %}
+      </ol>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>VD.poll("/api/stamp?vendor={{ v.id }}", "{{ stamp }}");</script>{% endblock %}

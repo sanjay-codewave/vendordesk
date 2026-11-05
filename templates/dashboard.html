@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Board · VendorDesk{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Vendors</h1>
+    <p class="muted">Everything Claude creates appears here within a few seconds.</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/api/export.csv">Export approved (CSV)</a>
+    <button class="btn primary" id="connectbtn">Connect to Claude</button>
+  </div>
+</div>
+
+<div class="tiles">
+  {% for s in STATUSES %}
+  <button class="tile st-{{ s }}" data-filter-status="{{ s }}">
+    <span class="tile-n">{{ counts[s] }}</span><span class="tile-l">{{ STATUS_LABELS[s] }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+{% if rows %}
+<div class="filters">
+  <input type="search" id="q" placeholder="Search vendor or contact" aria-label="Search vendors">
+  <select id="fstatus" aria-label="Filter by status">
+    <option value="">All statuses</option>
+    {% for s in STATUSES %}<option value="{{ s }}">{{ STATUS_LABELS[s] }}</option>{% endfor %}
+  </select>
+</div>
+
+<div class="board">
+  {% for s in STATUSES %}
+  <section class="col" data-col="{{ s }}">
+    <h2 class="colhead"><span class="dot st-{{ s }}"></span>{{ STATUS_LABELS[s] }} <span class="muted">{{ counts[s] }}</span></h2>
+    {% for r in rows if r.status == s %}
+    <a class="vcard" href="/vendors/{{ r.id }}" data-status="{{ r.status }}"
+       data-search="{{ (r.vendor_name ~ ' ' ~ (r.contact_name or '') ~ ' ' ~ (r.category or ''))|lower }}">
+      <div class="vcard-top">
+        <strong>{{ r.vendor_name }}</strong>
+        {% if r.created_by == 'claude' %}<span class="badge claude" title="Created from Claude through MCP">Created by Claude</span>{% endif %}
+      </div>
+      <div class="muted small">
+        {{ r.contact_name or 'No contact' }}{% if r.category %} · {{ r.category }}{% endif %}{% if r.state %} · {{ r.state }}{% endif %}
+      </div>
+      <div class="chips">
+        {% set c = r.check_summary %}
+        {% if c.fail %}<span class="chip fail">{{ c.fail }} failed</span>{% endif %}
+        {% if c.missing %}<span class="chip missing">{{ c.missing }} missing</span>{% endif %}
+        {% if c.warn %}<span class="chip warn">{{ c.warn }} warning{{ 's' if c.warn > 1 }}</span>{% endif %}
+        {% if c.pass %}<span class="chip pass">{{ c.pass }} passed</span>{% endif %}
+      </div>
+      <div class="vcard-foot small muted">
+        {% if r.bank_account_number %}<span>A/c {{ r.bank_account_number }}</span>{% endif %}
+        {% if r.has_claude_review %}<span class="badge soft">Claude reviewed</span>{% endif %}
+        {% if r.status != 'approved' and r.days_in_status >= 1 %}<span class="pending {{ 'late' if r.days_in_status >= 3 }}">{{ r.days_in_status }}d no activity</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card empty">
+  <h2>No vendors yet</h2>
+  <p>Connect VendorDesk to your Claude (below), then ask Claude to onboard a vendor. It will appear here.</p>
+  <p class="prompt">“Use VendorDesk to onboard Sharma Packaging (contact Ravi, 9800000000, Maharashtra). I need GST, PAN, bank details and a cancelled cheque.”</p>
+</div>
+{% endif %}
+
+<section class="card connect" id="connect">
+  <h2>Connect to Claude</h2>
+  <p class="muted">This is your private MCP link. Anyone with it can manage your vendors, so treat it like a password.</p>
+  {% if local %}<p class="alert">This is a local address. Claude connects from the internet, so it can't reach
+    127.0.0.1. Use the deployed (HTTPS) app's link instead.</p>{% endif %}
+  <div class="copyrow">
+    <input id="mcpurl" readonly value="{{ mcp_url }}" aria-label="MCP link">
+    <button class="btn primary" data-copy="#mcpurl">Copy</button>
+  </div>
+  <div class="grid2">
+    <ol class="steps">
+      <li>Use Claude on a paid plan (Pro or above).</li>
+      <li>In Claude, open <b>Customize → Connectors</b>, click <b>+</b>, choose <b>Add custom connector</b>.</li>
+      <li>Name it <b>VendorDesk</b>, paste the link above and choose <b>No sign in</b>.</li>
+      <li>In a new chat, turn on VendorDesk from the <b>+</b> menu.</li>
+    </ol>
+    <div>
+      <p class="small muted">Try asking Claude:</p>
+      <p class="prompt">“Use VendorDesk to onboard Sharma Packaging (contact Ravi, 9800000000, Maharashtra). I need GST, PAN, bank details and a cancelled cheque.”</p>
+      <p class="prompt">“Review Sharma Packaging's submission and draft a follow-up.”</p>
+      <p class="prompt">“What needs my attention in VendorDesk?”</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script>VD.poll("/api/stamp", "{{ stamp }}"); VD.boardFilters();</script>{% endblock %}

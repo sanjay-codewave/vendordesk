@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: vendordesk
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips '*'
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: DATABASE_URL
+        sync: false   # Neon Postgres connection string
+      - key: SECRET_KEY
+        generateValue: true
+      - key: PUBLIC_URL
+        sync: false   # e.g. https://vendordesk.onrender.com
+      - key: DEMO_TOKEN
+        sync: false
+      - key: DEMO_PASSWORD
+        sync: false
