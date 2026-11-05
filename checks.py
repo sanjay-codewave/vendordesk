@@ -39,6 +39,10 @@ PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
 ACCOUNT_RE = re.compile(r"^[0-9]{9,18}$")
 CH = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+# 4th PAN character = holder status (Income Tax Department).
+PAN_HOLDER_TYPES = {"P": "individual", "C": "company", "H": "HUF", "F": "firm / LLP", "A": "association of persons",
+                    "B": "body of individuals", "T": "trust", "G": "government", "J": "artificial juridical person",
+                    "L": "local authority"}
 UPPER_FIELDS = {"gstin", "pan", "ifsc", "bank_account_number", "msme_number"}
 
 
@@ -107,9 +111,14 @@ def run_checks(fields, declared_state, required_items, file_kinds):
 
     pan_ok = False
     if pan:
-        pan_ok = bool(PAN_RE.match(pan))
-        add("pan", "PAN format", "pass" if pan_ok else "fail",
-            "Valid format." if pan_ok else "PAN must be 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).")
+        if not PAN_RE.match(pan):
+            add("pan", "PAN format", "fail", "PAN must be 5 letters, 4 digits, 1 letter (e.g. ABCCS1234K).")
+        elif pan[3] not in PAN_HOLDER_TYPES:
+            add("pan", "PAN format", "fail", f"4th letter '{pan[3]}' is not a valid PAN holder type "
+                "(P person, C company, F firm, H HUF, A/B/T/G/J/L other). A letter is likely mistyped.")
+        else:
+            pan_ok = True
+            add("pan", "PAN format", "pass", f"Valid format ({PAN_HOLDER_TYPES[pan[3]]}).")
 
     if gst_ok and pan_ok:
         same = g[2:12] == pan
@@ -155,18 +164,23 @@ def summarize(checks):
 
 
 if __name__ == "__main__":  # self-check: python checks.py
-    good = "27ABCDE1234F1Z" + gstin_check_digit("27ABCDE1234F1Z")
-    f = {"gstin": good, "pan": "ABCDE1234F", "ifsc": "HDFC0001234", "bank_account_number": "123456789012",
+    good = "27ABCCS1234K1Z" + gstin_check_digit("27ABCCS1234K1Z")
+    f = {"gstin": good, "pan": "ABCCS1234K", "ifsc": "HDFC0001234", "bank_account_number": "123456789012",
          "bank_account_name": "Sharma Packaging Pvt Ltd", "legal_name": "M/s Sharma Packaging Private Limited"}
     r = {c["key"]: c["status"] for c in run_checks(f, "Maharashtra", ["gstin", "pan", "cancelled_cheque"], set())}
     assert r == {"item:gstin": "pass", "item:pan": "pass", "item:cancelled_cheque": "missing", "gstin": "pass",
                  "pan": "pass", "pan_in_gstin": "pass", "ifsc": "pass", "account": "pass", "state": "pass",
                  "holder": "pass"}, r
-    bad = {"gstin": good[:14] + ("A" if good[14] != "A" else "B"), "pan": "ABCDE1234X", "ifsc": "HDFC1001234",
+    bad = {"gstin": good[:14] + ("A" if good[14] != "A" else "B"), "pan": "ABCCS1234X", "ifsc": "HDFC1001234",
            "bank_account_number": "12AB"}
     r = {c["key"]: c["status"] for c in run_checks(bad, "Karnataka", [], set())}
     assert r == {"gstin": "fail", "pan": "pass", "ifsc": "fail", "account": "fail"}, r
-    r = {c["key"]: c["status"] for c in run_checks({"gstin": good, "pan": "ZZZZZ1234F"}, "Karnataka", [], set())}
+    r = {c["key"]: c["status"] for c in run_checks({"gstin": good, "pan": "ZZZCZ1234F"}, "Karnataka", [], set())}
     assert r == {"gstin": "pass", "pan": "pass", "pan_in_gstin": "fail", "state": "warn"}, r
+    r = {c["key"]: c["status"] for c in run_checks({"pan": "ABCDS1234K"}, None, [], set())}
+    assert r == {"pan": "fail"}, r  # 4th letter D is not a holder type
+    for real in ("27AAACR5055K1Z7", "29AAACI4798L1ZU", "33AAACI4798L3Z3", "35AAACR5055K1ZA"):  # public GSTINs
+        r = {c["key"]: c["status"] for c in run_checks({"gstin": real, "pan": real[2:12]}, None, [], set())}
+        assert r == {"gstin": "pass", "pan": "pass", "pan_in_gstin": "pass"}, (real, r)
     assert gstin_check_digit("27AAPFU0939F1Z") == "V"  # widely published sample GSTIN 27AAPFU0939F1ZV
     print("checks ok; sample valid GSTIN:", good)

@@ -42,8 +42,8 @@ Try:
 | Field | Passes | Fails |
 |---|---|---|
 | Legal name | Sharma Packaging Pvt Ltd | |
-| GSTIN | `27ABCDE1234F1Z0` | `27ABCDE1234F1Z5` (wrong check digit) |
-| PAN | `ABCDE1234F` | `ABCDE1234` (too short), `ZZZZZ1234F` (doesn't match GSTIN) |
+| GSTIN | `27ABCCS1234K1ZD` | `27ABCCS1234K1ZA` (wrong check digit) |
+| PAN | `ABCCS1234K` | `ABCCS1234` (too short), `ABCDS1234K` (4th letter D is not a holder type), `ZZZCZ1234F` (doesn't match GSTIN) |
 | IFSC | `HDFC0001234` | `HDFC1001234` (5th character must be 0) |
 | Account number | `50100123456789` | `12AB` |
 | Account holder | Sharma Packaging | Ravi Sharma (warning: differs from business) |

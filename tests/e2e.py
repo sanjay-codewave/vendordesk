@@ -75,13 +75,13 @@ async def main():
     async with httpx.AsyncClient(base_url=BASE) as c:
         page = await c.get(f"/v/{token}")
         check(page.status_code == 200 and "Sharma Packaging (test)" in page.text, "public form opens without login")
-        bad = (await c.post(f"/v/{token}/save", json={"gstin": "27ABCDE1234F1Z5", "pan": "abcde1234f",
+        bad = (await c.post(f"/v/{token}/save", json={"gstin": "27ABCCS1234K1ZA", "pan": "abccs1234k",
                                                        "ifsc": "HDFC1001234", "bank_account_number": "12AB"})).json()
         st = {x["key"]: x["status"] for x in bad["checks"]}
         check(st["gstin"] == "fail" and st["ifsc"] == "fail" and st["account"] == "fail",
               "wrong GSTIN check digit / IFSC / account fail")
         good = (await c.post(f"/v/{token}/save", json={
-            "legal_name": "Sharma Packaging Pvt Ltd", "gstin": "27ABCDE1234F1Z0", "pan": "ABCDE1234F",
+            "legal_name": "Sharma Packaging Pvt Ltd", "gstin": "27ABCCS1234K1ZD", "pan": "ABCCS1234K",
             "ifsc": "HDFC0001234", "bank_account_number": "50100123456789", "bank_account_name": "Sharma Packaging",
             "bank_name": "HDFC Bank"})).json()
         st = {x["key"]: x["status"] for x in good["checks"]}
@@ -107,7 +107,7 @@ async def main():
         async with ClientSession(r, w) as s:
             await s.initialize()
             err, d = await call(s, "get_vendor", id=vid)
-            check(not err and d["submitted_fields"]["gstin"] == "27ABCDE1234F1Z0" and d["files"][0]["size_bytes"] > 0,
+            check(not err and d["submitted_fields"]["gstin"] == "27ABCCS1234K1ZD" and d["files"][0]["size_bytes"] > 0,
                   "get_vendor returns fields and files")
             err, msg = await call(s, "add_review_note", id=vid, findings="x", suggested_status="approved")
             check(err, "Claude cannot approve")
@@ -129,7 +129,7 @@ async def main():
         det = await c.get(f"/vendors/{vid}")
         check("50100123456789" in det.text and "All checks pass" in det.text, "detail shows full value and review")
         r = await c.post(f"/vendors/{vid}/fields", data={"legal_name": "Sharma Packaging Private Limited",
-                                                          "gstin": "27ABCDE1234F1Z0", "pan": "ABCDE1234F",
+                                                          "gstin": "27ABCCS1234K1ZD", "pan": "ABCCS1234K",
                                                           "ifsc": "HDFC0001234", "bank_account_number": "50100123456789",
                                                           "bank_account_name": "Sharma Packaging",
                                                           "bank_name": "HDFC Bank Ltd"})

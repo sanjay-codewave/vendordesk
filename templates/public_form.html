@@ -41,8 +41,8 @@
         {% else %}<input name="{{ name }}" value="{{ f[name] or '' }}"
           {% if name in ('gstin','pan','ifsc','msme_number') %}class="mono" autocapitalize="characters" spellcheck="false"{% endif %}
           {% if name == 'bank_account_number' %}inputmode="numeric"{% endif %}
-          {% if name == 'gstin' %}maxlength="15" placeholder="27ABCDE1234F1Z5"{% endif %}
-          {% if name == 'pan' %}maxlength="10" placeholder="ABCDE1234F"{% endif %}
+          {% if name == 'gstin' %}maxlength="15" placeholder="27ABCCS1234K1ZD"{% endif %}
+          {% if name == 'pan' %}maxlength="10" placeholder="ABCCS1234K"{% endif %}
           {% if name == 'ifsc' %}maxlength="11" placeholder="HDFC0001234"{% endif %}>{% endif %}
         <span class="fmsg" data-for="{{ name }}"></span>
       </label>
