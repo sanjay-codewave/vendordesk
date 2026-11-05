@@ -23,6 +23,16 @@
 {% endif %}
 
 <div id="formarea" {% if not state.editable %}hidden{% endif %}>
+  {% if owner.username == 'demo' %}
+  <section class="card demobar">
+    <p><b>Demo account:</b> no need for real GST or PAN numbers. Fill the form with made-up sample details:</p>
+    <div class="share">
+      <button type="button" class="btn primary" data-sample="good">Fill correct sample</button>
+      <button type="button" class="btn" data-sample="bad">Fill with mistakes</button>
+    </div>
+    <p class="small muted">You can also type your own. Then upload any PDF, JPG or PNG and submit.</p>
+  </section>
+  {% endif %}
   <section class="card">
     <h2>What's needed</h2>
     <ul class="items" id="items">
@@ -74,4 +84,4 @@
 <script type="application/json" id="initial">{{ state|tojson }}</script>
 <script type="application/json" id="itemlabels">{{ ITEMS|tojson }}</script>
 {% endblock %}
-{% block scripts %}<script src="/static/vendor_form.js?v=1"></script>{% endblock %}
+{% block scripts %}<script src="/static/vendor_form.js?v=2"></script>{% endblock %}

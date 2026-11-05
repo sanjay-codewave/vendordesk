@@ -130,6 +130,21 @@
     inp.value = "";
   }));
 
+  // Demo account only: fill made-up sample details (fixed values, plain code).
+  const SAMPLES = {
+    good: { legal_name: "Sharma Packaging Pvt Ltd", trade_name: "", gstin: "27ABCCS1234K1ZD", pan: "ABCCS1234K",
+            address: "Plot 14, MIDC Bhosari, Pune, Maharashtra 411026", bank_account_name: "Sharma Packaging Pvt Ltd",
+            bank_account_number: "50100123456789", ifsc: "HDFC0001234", bank_name: "HDFC Bank", msme_number: "UDYAM-MH-26-0012345" },
+    bad: { legal_name: "Sharma Packaging Pvt Ltd", trade_name: "", gstin: "27ABCCS1234K1ZA", pan: "ABCDS1234K",
+           address: "Plot 14, MIDC Bhosari, Pune, Maharashtra 411026", bank_account_name: "Ravi Sharma",
+           bank_account_number: "5010012AB", ifsc: "HDFC1001234", bank_name: "HDFC Bank", msme_number: "" },
+  };
+  document.querySelectorAll("[data-sample]").forEach((b) => b.addEventListener("click", () => {
+    const sample = SAMPLES[b.dataset.sample];
+    form.querySelectorAll("input, textarea").forEach((i) => { if (i.name in sample) i.value = sample[i.name]; });
+    save();
+  }));
+
   document.getElementById("submitbtn").addEventListener("click", async () => {
     if (timer) await save();
     if (inflight) await inflight.catch(() => {});

@@ -170,3 +170,4 @@ label > input, label > textarea { margin-top: 5px; font-weight: 400; font-size: 
 
 @keyframes flashpanel { 0% { box-shadow: 0 0 0 4px rgba(15,118,110,.45); } 100% { box-shadow: 0 0 0 0 rgba(15,118,110,0); } }
 .flash-panel { animation: flashpanel 1.6s ease-out; border-color: var(--accent); }
+.demobar { border-color: #c7d7fe; background: #f5f8ff; }
