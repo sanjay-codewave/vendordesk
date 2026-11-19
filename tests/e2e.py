@@ -51,7 +51,7 @@ async def main():
             check("never" in (info.instructions or "").lower(), "server instructions present")
             tools = {t.name for t in (await s.list_tools()).tools}
             check(tools == {"get_summary", "create_vendor_request", "list_vendors", "get_vendor", "update_vendor",
-                            "add_review_note", "list_invoices", "update_invoice"}, "eight tools listed")
+                            "add_review_note", "list_invoices", "update_invoice", "delete_vendor"}, "nine tools listed")
             err, summ = await call(s, "get_summary")
             check(not err and summ["connected"], "get_summary works")
             err, v = await call(s, "create_vendor_request", vendor_name="Sharma Packaging (test)",
@@ -201,6 +201,28 @@ async def main():
     async with httpx.AsyncClient(base_url=BASE) as pub:
         page = (await pub.get(f"/v/{token}")).text
         check("Paid 2026-11-03" in page and "UTR123456" in page, "vendor sees paid date and reference")
+
+    async with streamablehttp_client(f"{BASE}/mcp/{TOKEN}") as (r, w, _):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            err, msg = await call(s, "delete_vendor", id=vid, confirm_name="Someone Else")
+            check(err and "does not match" in msg, "delete_vendor refuses a wrong confirm_name")
+            err, d = await call(s, "delete_vendor", id=vid, confirm_name=" sharma packaging (TEST) ")
+            check(not err and d["deleted"] and d["removed"]["paid_invoices"] == 1, "Claude deletes vendor on request")
+            err, msg = await call(s, "get_vendor", id=vid)
+            check(err and "No vendor with id" in msg, "deleted vendor is gone")
+    async with httpx.AsyncClient(base_url=BASE) as pub:
+        check((await pub.get(f"/v/{token}")).status_code == 404, "deleted vendor's link stops working")
+    async with streamablehttp_client(f"{BASE}/mcp/{TOKEN}") as (r, w, _):
+        async with ClientSession(r, w) as s:
+            await s.initialize()
+            err, v2 = await call(s, "create_vendor_request", vendor_name="Delete Me Traders", required_items=["pan"],
+                                 request_message="Please share your PAN: {link}")
+    async with httpx.AsyncClient(base_url=BASE) as c:
+        await c.post("/login", data={"username": USER, "password": PASSWORD})
+        r = await c.post(f"/vendors/{v2['id']}/delete")
+        check(r.status_code == 303 and r.headers["location"] == "/dashboard", "owner deletes a vendor in the app")
+        check((await c.get(f"/vendors/{v2['id']}")).status_code == 404, "deleted vendor page is gone")
     print(f"\nAll {ok} checks passed.")
 
 

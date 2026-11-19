@@ -23,7 +23,9 @@ date, document attached). The app has no AI: you do the thinking and writing.
 - Vendor statuses: {", ".join(STATUSES)}. Invoice statuses: {", ".join(INVOICE_STATUSES)}.
 - Approving a vendor, approving an invoice for payment and marking an invoice paid are the user's decisions: only do
   them when the user explicitly asks. VendorDesk does not move money; 'paid' only records a payment the user made.
-- When reviewing invoices, compare the amount with the vendor's earlier invoices and point out anything unusual."""
+- When reviewing invoices, compare the amount with the vendor's earlier invoices and point out anything unusual.
+- Deleting a vendor is permanent and removes its details, documents, invoices and history. Only delete when the user
+  explicitly asks; first tell them what will be lost (especially paid invoices) and get a clear yes."""
 
 mcp = FastMCP(
     "VendorDesk",
@@ -270,3 +272,23 @@ def update_invoice(ctx: Context, invoice_id: int, status: str = "", review_note:
             set_invoice_status(db, v, inv, status, "claude", paid_on, payment_reference)
         db.commit()
         return invoice_dict(inv, v) | {"vendor_page_in_app": f"{_base(ctx)}/vendors/{v.id}"}
+
+
+@mcp.tool()
+def delete_vendor(ctx: Context, id: int, confirm_name: str) -> dict:
+    """Permanently delete a vendor with its details, documents, invoices and history. This cannot be undone and
+    the vendor's link stops working. Only call this when the user explicitly asks to delete this vendor. Before
+    calling, tell the user what will be removed (use get_vendor: e.g. paid invoices) and get a clear yes.
+    confirm_name must be the vendor's exact name, as a safety check."""
+    with SessionLocal() as db:
+        user = _user(db, ctx)
+        v = _vendor(db, user, id)
+        if confirm_name.strip().casefold() != v.vendor_name.strip().casefold():
+            raise ValueError(f"confirm_name does not match. Vendor {id} is named {v.vendor_name!r}; "
+                             "pass that exact name to delete it.")
+        removed = {"vendor": v.vendor_name, "invoices": len(v.invoices),
+                   "paid_invoices": sum(1 for i in v.invoices if i.status == "paid"),
+                   "documents": len(v.files), "history_entries": len(v.events)}
+        db.delete(v)
+        db.commit()
+        return {"deleted": True, "removed": removed, "board": f"{_base(ctx)}/dashboard"}

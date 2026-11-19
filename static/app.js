@@ -55,6 +55,7 @@ window.VD = (function () {
       if (document.hidden || busy()) return;
       try {
         const r = await fetch(url, { cache: "no-store" });
+        if (r.status === 404) { location.href = "/dashboard"; return; } // vendor was deleted
         if (!r.ok) return;
         const d = await r.json();
         if (d.stamp && d.stamp !== stamp) location.reload();

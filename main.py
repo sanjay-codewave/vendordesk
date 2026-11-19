@@ -287,6 +287,16 @@ def change_status(request: Request, vendor_id: int, status: str = Form(...)):
     return RedirectResponse(f"/vendors/{vendor_id}", 303)
 
 
+@app.post("/vendors/{vendor_id}/delete")
+def delete_vendor(request: Request, vendor_id: int):
+    """Permanently removes a vendor with its fields, files, invoices and history (the page asks first)."""
+    with SessionLocal() as db:
+        user = require_user(request, db)
+        db.delete(own_vendor(db, user, vendor_id))
+        db.commit()
+    return RedirectResponse("/dashboard", 303)
+
+
 @app.post("/vendors/{vendor_id}/texts")
 async def edit_texts(request: Request, vendor_id: int):
     """Saves the editable texts: request message, Claude's findings and follow-up, and notes."""

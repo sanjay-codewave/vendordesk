@@ -196,6 +196,11 @@
         {% endfor %}
       </ol>
     </section>
+
+    <form method="post" action="/vendors/{{ v.id }}/delete" class="deleteform"
+          data-confirm="Delete {{ v.vendor_name }} permanently? This removes its details, documents, {{ v.invoices|length }} invoice(s) and history, and the vendor's link stops working.">
+      <button class="linkbtn danger small">Delete vendor</button>
+    </form>
   </div>
 </div>
 {% endblock %}
